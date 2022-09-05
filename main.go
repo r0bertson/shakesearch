@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -68,18 +69,39 @@ func (s *Searcher) Load(filename string) error {
 		return fmt.Errorf("load: %w", err)
 	}
 	s.CompleteWorks = string(dat)
-	//s.CompleteWorks = strings.ReplaceAll(s.CompleteWorks, "\r\n", "<br />") //TODO: PARSE THIS WHEN FORMATTING
+	s.CompleteWorks = strings.ReplaceAll(s.CompleteWorks, "\r\n", "<br />") //TODO: PARSE THIS WHEN FORMATTING
 	lowerCased := strings.ToLower(s.CompleteWorks)
 	s.SuffixArray = suffixarray.New([]byte(lowerCased))
 	return nil
 }
 
+type ChunkedResult struct {
+	Indexes []int
+	Result  string
+}
+
+const SearchPreSuffixSize = 250
+
 func (s *Searcher) Search(query string) []string {
 	idxs := s.SuffixArray.Lookup([]byte(query), -1)
+	sort.Ints(idxs)
+
 	results := []string{}
-	for _, idx := range idxs {
-		//TODO: remove repetition
-		results = append(results, s.CompleteWorks[idx-250:idx+250])
+	chunks := []ChunkedResult{}
+	currentChunk := ChunkedResult{}
+	currentIndexValue := 0
+	numberOfIndexes := len(idxs)
+	for i := 0; i < numberOfIndexes; i++ {
+		currentIndexValue = idxs[i]
+		currentChunk.Indexes = append(currentChunk.Indexes, currentIndexValue)
+		nextIndex := i + 1
+		if nextIndex < numberOfIndexes && idxs[nextIndex]-currentIndexValue > SearchPreSuffixSize {
+			chunks = append(chunks, currentChunk)
+			currentChunk = ChunkedResult{}
+		}
+	}
+	for _, chunk := range chunks {
+		results = append(results, s.CompleteWorks[chunk.Indexes[0]-SearchPreSuffixSize:chunk.Indexes[len(chunk.Indexes)-1]+SearchPreSuffixSize])
 	}
 	return results
 }
