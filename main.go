@@ -110,7 +110,15 @@ func (s *Searcher) Search(query string) []string {
 	chunks := chunkSimilarResults(idxs)
 	results := []string{}
 	for _, chunk := range chunks {
-		results = append(results, s.CompleteWorks[chunk.Indexes[0]-SearchPreSuffixSize:chunk.Indexes[len(chunk.Indexes)-1]+SearchPreSuffixSize])
+		start := chunk.Indexes[0] - SearchPreSuffixSize
+		end := chunk.Indexes[len(chunk.Indexes)-1] + SearchPreSuffixSize
+		if start < 0 {
+			start = 0
+		}
+		if end > len(s.CompleteWorks)-1 {
+			end = len(s.CompleteWorks) - 1
+		}
+		results = append(results, s.CompleteWorks[start:end])
 	}
 	return results
 }
@@ -129,6 +137,7 @@ func chunkSimilarResults(indexes []int) []ChunkedResult {
 			currentChunk = ChunkedResult{}
 		}
 	}
+	chunks = append(chunks, currentChunk) //last chunk
 	return chunks
 }
 
