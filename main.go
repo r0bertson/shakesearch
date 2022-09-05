@@ -85,7 +85,14 @@ const WindowsLineBreak = "\r\n"
 const HTMLLineBreak = "<br>"
 
 func (s *Searcher) Search(query string) []string {
-	idxs := s.SuffixArray.Lookup([]byte(query), -1)
+
+	keywords := strings.Split(query, " ")
+	idxs := []int{}
+	for _, keyword := range keywords {
+		idxs = append(idxs, s.SuffixArray.Lookup([]byte(keyword), -1)...)
+	}
+
+	idxs = Unique(idxs)
 	sort.Ints(idxs)
 
 	chunks := chunkSimilarResults(idxs)
