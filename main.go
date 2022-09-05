@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"index/suffixarray"
@@ -84,9 +85,19 @@ const SearchPreSuffixSize = 250
 const WindowsLineBreak = "\r\n"
 const HTMLLineBreak = "<br>"
 
-func (s *Searcher) Search(query string) []string {
+func parseSearchQuery(query string) []string {
+	r := csv.NewReader(strings.NewReader(query))
+	r.Comma = ' ' // space
+	fields, _ := r.Read()
+	formatted := []string{}
+	for _, field := range fields {
+		formatted = append(formatted, strings.ReplaceAll(field, "\"", ""))
+	}
+	return formatted
+}
 
-	keywords := strings.Split(query, " ")
+func (s *Searcher) Search(query string) []string {
+	keywords := parseSearchQuery(query)
 	idxs := []int{}
 	for _, keyword := range keywords {
 		idxs = append(idxs, s.SuffixArray.Lookup([]byte(keyword), -1)...)
