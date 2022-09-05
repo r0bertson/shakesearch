@@ -50,6 +50,7 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 			return
 		}
 		results := searcher.Search(query[0])
+		results = formatResults(results)
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
 		err := enc.Encode(results)
@@ -69,7 +70,6 @@ func (s *Searcher) Load(filename string) error {
 		return fmt.Errorf("load: %w", err)
 	}
 	s.CompleteWorks = string(dat)
-	s.CompleteWorks = strings.ReplaceAll(s.CompleteWorks, "\r\n", "<br />") //TODO: PARSE THIS WHEN FORMATTING
 	lowerCased := strings.ToLower(s.CompleteWorks)
 	s.SuffixArray = suffixarray.New([]byte(lowerCased))
 	return nil
@@ -81,27 +81,47 @@ type ChunkedResult struct {
 }
 
 const SearchPreSuffixSize = 250
+const WindowsLineBreak = "\r\n"
+const HTMLLineBreak = "<br>"
 
 func (s *Searcher) Search(query string) []string {
 	idxs := s.SuffixArray.Lookup([]byte(query), -1)
 	sort.Ints(idxs)
 
+	chunks := chunkSimilarResults(idxs)
 	results := []string{}
-	chunks := []ChunkedResult{}
-	currentChunk := ChunkedResult{}
-	currentIndexValue := 0
-	numberOfIndexes := len(idxs)
-	for i := 0; i < numberOfIndexes; i++ {
-		currentIndexValue = idxs[i]
-		currentChunk.Indexes = append(currentChunk.Indexes, currentIndexValue)
-		nextIndex := i + 1
-		if nextIndex < numberOfIndexes && idxs[nextIndex]-currentIndexValue > SearchPreSuffixSize {
-			chunks = append(chunks, currentChunk)
-			currentChunk = ChunkedResult{}
-		}
-	}
 	for _, chunk := range chunks {
 		results = append(results, s.CompleteWorks[chunk.Indexes[0]-SearchPreSuffixSize:chunk.Indexes[len(chunk.Indexes)-1]+SearchPreSuffixSize])
 	}
 	return results
+}
+
+func chunkSimilarResults(indexes []int) []ChunkedResult {
+	chunks := []ChunkedResult{}
+	currentChunk := ChunkedResult{}
+	currentIndexValue := 0
+	numberOfIndexes := len(indexes)
+	for i := 0; i < numberOfIndexes; i++ {
+		currentIndexValue = indexes[i]
+		currentChunk.Indexes = append(currentChunk.Indexes, currentIndexValue)
+		nextIndex := i + 1
+		if nextIndex < numberOfIndexes && indexes[nextIndex]-currentIndexValue > SearchPreSuffixSize {
+			chunks = append(chunks, currentChunk)
+			currentChunk = ChunkedResult{}
+		}
+	}
+	return chunks
+}
+
+func formatResults(results []string) []string {
+	for idx, result := range results {
+		results[idx] = format(result)
+	}
+	return results
+}
+
+func format(s string) string {
+	s = s[strings.Index(s, WindowsLineBreak):strings.LastIndex(s, WindowsLineBreak)] //removes potentially broken lines
+	s = strings.TrimSpace(s)                                                         //trim spaces
+	return strings.ReplaceAll(s, WindowsLineBreak, HTMLLineBreak)                    //fix line breaks
 }
