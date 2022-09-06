@@ -55,7 +55,7 @@ func (ws *WorkSearcher) Load(filename string) error {
 type Result struct {
 	WorkTitle string   `json:"work_title"`
 	Fragments []string `json:"fragments"`
-	//TODO: fragments could be verse-based
+	//TODO: fragments could be verse-based and used instead of PreSuffixSize
 }
 
 func (w *Work) Search(keys []string) *Result {
@@ -127,5 +127,6 @@ func (r *Result) Format() {
 		lastLineIndex := strings.LastIndex(r.Fragments[i], WindowsLineBreak)
 		r.Fragments[i] = r.Fragments[i][firstLineIndex:lastLineIndex]                        //removes potentially broken lines
 		r.Fragments[i] = strings.ReplaceAll(r.Fragments[i], WindowsLineBreak, HTMLLineBreak) //fix line breaks
+		r.Fragments[i] = strings.Trim(r.Fragments[i], HTMLLineBreak)
 	}
 }
