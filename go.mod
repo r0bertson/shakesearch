@@ -1,3 +1,3 @@
 module pulley.com/shakesearch
 
-go 1.19
+go 1.18.2
