@@ -2,28 +2,26 @@ package main
 
 import (
 	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"index/suffixarray"
 	"log"
 	"net/http"
 	"os"
-	"sort"
-	"strings"
+	"pulley.com/shakesearch/pkg/search"
+	"pulley.com/shakesearch/pkg/utils"
 )
 
 func main() {
-	searcher := Searcher{}
-	err := searcher.Load("completeworks.txt")
-	if err != nil {
+	ws := search.WorkSearcher{}
+
+	if err := ws.Load("completeworks.txt"); err != nil {
 		log.Fatal(err)
 	}
 
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/", fs)
 
-	http.HandleFunc("/search", handleSearch(searcher))
+	http.HandleFunc("/search", handleSearch(ws))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -31,18 +29,13 @@ func main() {
 	}
 
 	fmt.Printf("Listening on port %s...", port)
-	err = http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
+	err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-type Searcher struct {
-	CompleteWorks string
-	SuffixArray   *suffixarray.Index
-}
-
-func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request) {
+func handleSearch(searcher search.WorkSearcher) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query, ok := r.URL.Query()["q"]
 		if !ok || len(query[0]) < 1 {
@@ -50,8 +43,9 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 			w.Write([]byte("missing search query in URL params"))
 			return
 		}
-		results := searcher.Search(query[0])
-		results = formatResults(results)
+		keywords := utils.ParseSearchQuery(query[0])
+		results := searcher.Search(keywords)
+
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
 		err := enc.Encode(results)
@@ -63,93 +57,4 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(buf.Bytes())
 	}
-}
-
-func (s *Searcher) Load(filename string) error {
-	dat, err := os.ReadFile(filename)
-	if err != nil {
-		return fmt.Errorf("load: %w", err)
-	}
-	s.CompleteWorks = string(dat)
-	lowerCased := strings.ToLower(s.CompleteWorks)
-	s.SuffixArray = suffixarray.New([]byte(lowerCased))
-	return nil
-}
-
-type ChunkedResult struct {
-	Indexes []int
-	Result  string
-}
-
-const SearchPreSuffixSize = 250
-const WindowsLineBreak = "\r\n"
-const HTMLLineBreak = "<br>"
-
-func parseSearchQuery(query string) []string {
-	query = strings.ToLower(query)
-	r := csv.NewReader(strings.NewReader(query))
-	r.Comma = ' ' // space
-	fields, _ := r.Read()
-	formatted := []string{}
-	for _, field := range fields {
-		formatted = append(formatted, strings.ReplaceAll(field, "\"", ""))
-	}
-	return formatted
-}
-
-func (s *Searcher) Search(query string) []string {
-	keywords := parseSearchQuery(query)
-	idxs := []int{}
-	for _, keyword := range keywords {
-		idxs = append(idxs, s.SuffixArray.Lookup([]byte(keyword), -1)...)
-	}
-
-	idxs = Unique(idxs)
-	sort.Ints(idxs)
-
-	chunks := chunkSimilarResults(idxs)
-	results := []string{}
-	for _, chunk := range chunks {
-		start := chunk.Indexes[0] - SearchPreSuffixSize
-		end := chunk.Indexes[len(chunk.Indexes)-1] + SearchPreSuffixSize
-		if start < 0 {
-			start = 0
-		}
-		if end > len(s.CompleteWorks)-1 {
-			end = len(s.CompleteWorks) - 1
-		}
-		results = append(results, s.CompleteWorks[start:end])
-	}
-	return results
-}
-
-func chunkSimilarResults(indexes []int) []ChunkedResult {
-	chunks := []ChunkedResult{}
-	currentChunk := ChunkedResult{}
-	currentIndexValue := 0
-	numberOfIndexes := len(indexes)
-	for i := 0; i < numberOfIndexes; i++ {
-		currentIndexValue = indexes[i]
-		currentChunk.Indexes = append(currentChunk.Indexes, currentIndexValue)
-		nextIndex := i + 1
-		if nextIndex < numberOfIndexes && indexes[nextIndex]-currentIndexValue > SearchPreSuffixSize {
-			chunks = append(chunks, currentChunk)
-			currentChunk = ChunkedResult{}
-		}
-	}
-	chunks = append(chunks, currentChunk) //last chunk
-	return chunks
-}
-
-func formatResults(results []string) []string {
-	for idx, result := range results {
-		results[idx] = format(result)
-	}
-	return results
-}
-
-func format(s string) string {
-	s = s[strings.Index(s, WindowsLineBreak):strings.LastIndex(s, WindowsLineBreak)] //removes potentially broken lines
-	s = strings.TrimSpace(s)                                                         //trim spaces
-	return strings.ReplaceAll(s, WindowsLineBreak, HTMLLineBreak)                    //fix line breaks
 }
