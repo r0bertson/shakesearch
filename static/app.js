@@ -21,7 +21,7 @@ const Controller = {
       fragments.forEach((fragment) => {
         innerBlocks.push(`<div class="card border-dark mb-3"><div class="card-body">${fragment}</div></div>`)
       })
-      blocks.push(`<h3>${title}</h3>${innerBlocks.join("\n")}`)
+      blocks.push(`<h3 class="text-center">${title}</h3>${innerBlocks.join("\n")}`)
     })
     content.innerHTML = blocks.join("\n");
   },
