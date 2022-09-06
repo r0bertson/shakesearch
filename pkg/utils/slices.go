@@ -1,5 +1,6 @@
 package utils
 
+// Unique returns all unique elements in a group of slices
 func Unique(intSlices ...[]int) []int {
 	uniqueMap := map[int]bool{}
 
